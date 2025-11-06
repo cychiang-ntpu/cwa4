@@ -1,0 +1,29 @@
+P.dat header format:
+
+The data sequence are aligned as: 
+year(I4), month(I2), day(I2),hour(I2), minute(I2), second(F6.2), 
+north_latitude(I2), minute(F5.2),east_longitude(I3), minute(F5.2), depth(F6.2), 
+magnitude(F4.2), station number(I2), 
+epicentral distance to the nearest station(F5.1), gap(I3),
+RMS(F4.2), ERH(F4.1), ERZ(F4.1), focal depth control(F: free run,
+X:fixed depth), number of phases picked(I3), quality(A1) and correlated
+file name.
+
+Gap : the largest azmuthal separation in degrees between stations.
+RMS : root-mean-square error of the time residuals.
+ERH : standard error of the epicenter in KM.
+ERZ : standard error of the depth in KM.
+Q   : solution quality of the hypocenter based on the nature of station
+      distribution and RMS. It is classified into A, B, C, D 4 ranks
+      according to the following scheme:
+
+    Q   No. of stations      Gap       Min. of Epicenter Dist. of sta.
+
+    A     >= 6              <= 90       <= Depth or 5 Km
+    B     >= 6              <= 135      <= 2 Depth or 10 Km
+    C     >= 6              <= 180      < 50 Km
+    D     others
+
+focal depth control, F: free run, means  the solution automatically 
+converge to min. error, X:fixed depth, means if the solution's not good, 
+then the depth will be given an emperial value to reach the min. error. 
