@@ -116,20 +116,28 @@ class Dataset4(torch.utils.data.Dataset):
         input = pd.concat((df0, df1), axis=1)
         target = pd.DataFrame(sliding_window_view(np.pad(df2, (0,target_width)), target_width).sum(axis=-1)[1:], index=df2.index)
 
-        if subset == "trn":
-            input = input.loc[:'2020-01-01']
-            target = target.loc[:'2020-01-01']
-        elif subset == "tst":
-            input = input.loc['2020-01-01':]
-            target = target.loc['2020-01-01':]
 
         input = torch.from_numpy(input.to_numpy()) # (T, C)
-        input = torch.unfold(input, dimension=0, size=input_width, step=1).transpose(1, 2) # (T-L, C, L)
-        self.input = input
+        target = torch.from_numpy(target.to_numpy())
+
+        # 先切開
+        if subset == "trn":
+            input = input[:7305]
+            target = target[:7305]
+        else:
+            input = input[7305:]
+            target = target[7305:]
+
+        input = input.unfold(dimension=0, size=input_width, step=1).transpose(1, 2) # (T-L+1, C, L)
+        self.input = input.float()
 
         # target 的處理
-        target = torch.from_numpy(target.to_numpy())
+        target = (target[input_width-1:] > 0).float()
         self.target = target
+    
+    @property
+    def input_dim(self):
+        return self.input.shape[-1]
 
     def __len__(self):
         return self.input.shape[0]

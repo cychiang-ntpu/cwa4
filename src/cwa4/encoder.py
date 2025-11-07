@@ -83,8 +83,8 @@ class BiGRUSwishNorm(nn.Module):
         y = self.norm(y)
         return y
 
-class Classifier(nn.Module):
-    def __init__(self, x_dim, h_dim, n_spks, spk_emb_dim):
+class Classifier1(nn.Module):
+    def __init__(self, x_dim, h_dim):
         super().__init__()
 
         self.encoder = nn.Sequential(
@@ -108,7 +108,7 @@ class Classifier(nn.Module):
         y : torch.Tensor of shape(B)  發生地震的對數機率。
         """
         h = self.encoder(x) 
-        y = self.output(h[:, -1, :]) # (B, 1)
+        y = torch.sigmoid(self.output(h[:, -1, 0])) # (B, 1)
         return y.view(-1)
   
 
