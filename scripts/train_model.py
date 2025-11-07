@@ -1,10 +1,10 @@
 import logging
-
+import torch
 from torch.nn import BCELoss
 from torch.optim import Adam
 from torch.utils.data import DataLoader
-from cw4.dataset import Dataset4
-from cw4.encoder import Classifier1
+from cwa4.dataset import Dataset4
+from cwa4.encoder import Classifier1
 
 
 def setup_logger():
@@ -24,11 +24,11 @@ def setup_logger():
 logger = setup_logger()
 device = torch.device("cuda:0")
 
-for target_width in (1, 90,  180, 365):
-     # training loop
+for target_width in (1, 90, 180, 365, 730):
+    # training loop
     dataset = Dataset4(
-        gnss_path="data/hualian_daily_gnss_dXdYdU.pkl", 
-        statistics_path="data/hulian_daily_stataistics.pkl", 
+        gnss_path="hualian_daily_gnss_dXdYdU.pkl", 
+        statistics_path="hualian_daily_statistics.pkl", 
         target_path="hualian_target_cnt.pkl", 
         input_width=730, 
         target_width=target_width,
@@ -38,7 +38,7 @@ for target_width in (1, 90,  180, 365):
     model = Classifier1(dataset.input_dim, h_dim=128)
     model.to(device)  # move model to device
     
-    optim = Adam(model.parameters())
+    optim = Adam(model.parameters(),lr=0.0001)
 
     loss_fn = BCELoss()
     logger.info("start traning")
@@ -49,11 +49,12 @@ for target_width in (1, 90,  180, 365):
             y = y.to(device)
             loss = loss_fn(model(x), y)
             loss.backward()
-            logger.info("epoch: {epoch}, loss: {loss.item()}")
+            logger.info(f"epoch: {epoch}, loss: {loss.item()}")
     torch.save(model.state_dict(), f"state_dict_{target_width}.pt")
     # 驗證
     model.eval()
     
+    dataloader = DataLoader(dataset, batch_size=128, shuffle=False)
     tp, fp, tn, fn = 0, 0, 0, 0
 
     for x, y in dataloader:
@@ -65,17 +66,43 @@ for target_width in (1, 90,  180, 365):
         fp += torch.sum( (y == 0.0) & (y_hat == 1.0) ).item()
         tn += torch.sum( (y == 0.0) & (y_hat == 0.0) ).item()
         fn += torch.sum( (y == 1.0) & (y_hat == 0.0) ).item()
-        n = tp + fp + tn + fn
-        accuracy = (tp + tn) / n
-        precision = (tp) / (tp + fp)
-        recall = (tp) / (tp + fn) 
+    n = tp + fp + tn + fn
+    accuracy = (tp + tn) / n
+    precision = (tp) / (tp + fp)
+    recall = (tp) / (tp + fn) 
 
-        logger.info("metrics of the training set. target_width: {target_width}")
-        logger.info(f"tp: {tp}, fp: {fp}, tn: {tn}, fn: {fn}, N={tp+fp+tn+fn}")
-        logger.info(f"accuracy: {accuracy*100.0:.4f}%, precision: {precision*100.0:.4f}%, recall: {recall*100.0:.4f}")
-
-
-
-
+    logger.info(f"metrics of the training set. target_width: {target_width}")
+    logger.info(f"tp: {tp}, fp: {fp}, tn: {tn}, fn: {fn}, N={tp+fp+tn+fn}")
+    logger.info(f"accuracy: {accuracy*100.0:.4f}%, precision: {precision*100.0:.4f}%, recall: {recall*100.0:.4f}")
+    #  Test set
+    dataset = Dataset4(
+        gnss_path="hualian_daily_gnss_dXdYdU.pkl", 
+        statistics_path="hualian_daily_statistics.pkl", 
+        target_path="hualian_target_cnt.pkl", 
+        input_width=730, 
+        target_width=target_width,
+        subset="tst"
+    )
     
+    dataloader = DataLoader(dataset, batch_size=128, shuffle=False)
             
+    tp, fp, tn, fn = 0, 0, 0, 0
+
+    for x, y in dataloader:
+        x = x.to(device)
+        y = y.to(device)
+        y_hat = model(x).round()
+        # 計算 accuracy 
+        tp += torch.sum( (y == 1.0) & (y_hat == 1.0) ).item()
+        fp += torch.sum( (y == 0.0) & (y_hat == 1.0) ).item()
+        tn += torch.sum( (y == 0.0) & (y_hat == 0.0) ).item()
+        fn += torch.sum( (y == 1.0) & (y_hat == 0.0) ).item()
+    n = tp + fp + tn + fn
+    accuracy = (tp + tn) / n
+    precision = (tp) / (tp + fp)
+    recall = (tp) / (tp + fn) 
+
+    logger.info(f"metrics of the test set. target_width: {target_width}")
+    logger.info(f"tp: {tp}, fp: {fp}, tn: {tn}, fn: {fn}, N={tp+fp+tn+fn}")
+    logger.info(f"accuracy: {accuracy*100.0:.4f}%, precision: {precision*100.0:.4f}%, recall: {recall*100.0:.4f}")
+

@@ -2,9 +2,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from mingru import MinGRU
-from layernorm import LayerNorm1d
-from conv_btc import Conv1dBTC
+from .mingru import MinGRU
+from .layernorm import LayerNorm1d
+from .conv_btc import Conv1dBTC
 
 
 def create_reverse_indices(lengths, max_length=None):
@@ -66,19 +66,15 @@ class ConvSwishNorm(nn.Module):
         y = self.norm(y)
         return y
     
-class BiGRUSwishNorm(nn.Module):
+class GRUSwishNorm(nn.Module):
     def __init__(self, x_dim, y_dim):
         super().__init__()
-        self.gru_fwd = MinGRU(x_dim, y_dim//2)
-        self.gru_bwd = MinGRU(x_dim, y_dim - y_dim//2)
-        self.silu = Swish()
+        self.gru_fwd = MinGRU(x_dim, y_dim)
+        self.swish = Swish()
         self.norm = LayerNorm1d(y_dim, channels_last=True)
     
-    def forward(self, x, x_lengths):
-        rev_index = create_reverse_indices(x_lengths)
-        y_fwd, _ = self.gru_fwd(x)
-        y_bwd, _ = self.gru_bwd(x.gather(dim=1, index=rev_index))
-        y = torch.cat([y_fwd, y_bwd.gather(dim=1, index=rev_index)], dim=-1) 
+    def forward(self, x):
+        y, _ = self.gru_fwd(x)
         y = self.swish(y)
         y = self.norm(y)
         return y
@@ -88,9 +84,9 @@ class Classifier1(nn.Module):
         super().__init__()
 
         self.encoder = nn.Sequential(
-            BiGRUSwishNorm(x_dim + spk_emb_dim, h_dim),
-            BiGRUSwishNorm(h_dim, h_dim),
-            BiGRUSwishNorm(h_dim, h_dim)
+            GRUSwishNorm(x_dim, h_dim),
+            GRUSwishNorm(h_dim, h_dim),
+            GRUSwishNorm(h_dim, h_dim)
         )
 
         self.output = nn.Linear(h_dim, 1)
@@ -108,7 +104,9 @@ class Classifier1(nn.Module):
         y : torch.Tensor of shape(B)  發生地震的對數機率。
         """
         h = self.encoder(x) 
-        y = torch.sigmoid(self.output(h[:, -1, 0])) # (B, 1)
-        return y.view(-1)
+        h = h[:, -1, :] # (B, C)
+        h = self.output(h) # (B, 1)
+        y = torch.sigmoid(h) # (B, 1)
+        return y
   
 
