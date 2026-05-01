@@ -47,8 +47,10 @@ for target_width in (1, 90, 180, 365, 730):
         for x, y in dataloader:
             x = x.to(device)
             y = y.to(device)
+            optim.zero_grad()
             loss = loss_fn(model(x), y)
             loss.backward()
+            optim.step()
             logger.info(f"epoch: {epoch}, loss: {loss.item()}")
     torch.save(model.state_dict(), f"state_dict_{target_width}.pt")
     # 驗證

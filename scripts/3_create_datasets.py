@@ -13,14 +13,14 @@ station_loc_file = Path("data/station_locations.pkl")
 alive_stations_file = Path("data/各縣市存活測站.json")
 
 time_start = pd.Timestamp('2000-01-01', tz="Asia/Taipei") # 台灣時間
-time_end = pd.Timestamp('2024-01-01', tz="Asia/Taipei")
+time_end = pd.Timestamp('2023-12-31', tz="Asia/Taipei")
 #transformer = Transformer.from_crs("EPSG:3826", "EPSG:3824", always_xy=True)
 full_dates = pd.date_range(time_start, time_end)
 
 # 讀取 datasets
 pfile = pd.read_pickle(pfile_file)
 gnss = pd.read_pickle(gnss_file)
-alive_stations = json.load(alive_stations_file.open("r"))
+alive_stations = json.load(alive_stations_file.open("r", encoding="utf-8"))
 station_loc = pd.read_pickle(station_loc_file)
 
 
@@ -34,17 +34,17 @@ for i, row in station_loc_hualian.iterrows():
     inside_i = np.hypot(pfile['X'] - row['X'], pfile['Y'] - row['Y']) # 20km
     in_hualian = in_hualian | (inside_i < 20000.0)
 
-pfile_hualian = pfile[in_hualian]
-pfile_hualian.loc[:, '能量'] = np.power(10.0, pfile_hualian['規模'] * 1.5 + 11.8)
+pfile_hualian = pfile[in_hualian].copy()
+pfile_hualian['能量'] = np.power(10.0, pfile_hualian['規模'] * 1.5 + 11.8)
 
 pfile_hualian.index = pfile_hualian.index.tz_convert("Asia/Taipei")
 
 grouper = pd.Grouper(freq='1d', origin=time_start)
 
-target_cnt = pfile_hualian[(pfile_hualian['規模'] > 5.5) & (pfile_hualian['深度'] < 30.0)].groupby(grouper).size()
+target_cnt = pfile_hualian[(pfile_hualian['規模'] >= 5.5) & (pfile_hualian['深度'] < 30.0)].groupby(grouper).size()
 
 target_cnt = target_cnt.reindex(full_dates, fill_value=0)
-target_cnt.to_pickle("hualian_target_cnt.pkl")
+target_cnt.to_pickle("data/hualian_target_cnt.pkl")
 
 # 分成 極淺、淺、中層 能量釋放 + 次數 
 # 花蓮沒有深層的地震，所以不計
@@ -69,10 +69,10 @@ statistics = pd.DataFrame({
 })
 
 statistics = statistics.reindex(full_dates)
-statistics.to_pickle("hualian_daily_statistics.pkl")
+statistics.to_pickle("data/hualian_daily_statistics.pkl")
 
 # GNSS 資料
 gnss.index = gnss.index.tz_convert("Asia/Taipei").normalize()
 gnss = gnss[alive_stations['花蓮縣']].reindex(full_dates)
 gnss = gnss.fillna(0.0)
-gnss.to_pickle("hualian_daily_gnss_dXdYdU.pkl")
+gnss.to_pickle("data/hualian_daily_gnss_dXdYdU.pkl")

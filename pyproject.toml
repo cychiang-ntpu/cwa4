@@ -8,6 +8,17 @@ dependencies = [
     "pandas>=2.3.3",
     "pyproj>=3.7.2",
     "torch==2.7.0",
+    "numpy>=2.0",
+    "geopandas>=1.0",
+    "matplotlib>=3.8",
+    "scikit-learn>=1.5",
+    "tqdm>=4.66",
+    "pyarrow>=17.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
 ]
 
 [build-system]

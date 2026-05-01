@@ -21,8 +21,8 @@ def read_data(
     stations_df = pd.read_pickle(stations_path)
     # 取得中心位置
     _name, x, y, _u, _start_time, _end_time = stations_df[ stations_df['name'] == center].iloc[0]
-    # 過濾已停用的測站
-    stations_df = stations_df[ stations_df['last_epoch'] == '2023-12-31 11:59:00']
+    # 過濾已停用的測站（last_epoch 落在資料末日才視為仍存活）
+    stations_df = stations_df[ stations_df['last_epoch'] >= pd.Timestamp('2023-12-31')]
     # 取得鄰近測站
     distance = np.hypot(stations_df['X'] - x, stations_df['Y'] - y)
     neighbors = stations_df[ (stations_df['name'] != center) &  (distance <= radius_b )]
@@ -34,7 +34,7 @@ def read_data(
 
     # 過濾 gnss 資料，轉換時區
     full_dates = pd.date_range("1994-01-01 11:59:00+00:00", "2023-12-31 11:59:00+00:00")
-    gnss_df = gnss_df.reindex(full_dates, fill_value=np.NaN)
+    gnss_df = gnss_df.reindex(full_dates, fill_value=np.nan)
     gnss_df.index = gnss_df.index.tz_convert("Asia/Taipei")
     gnss_df = gnss_df[t0: t1]
     gnss_df = gnss_df.fillna(0.0)
@@ -101,9 +101,9 @@ class Dataset3(torch.utils.data.Dataset):
 class Dataset4(torch.utils.data.Dataset):
     def __init__(
             self, 
-            gnss_path="data/hualian_daily_gnss_dXdYdU.pkl", 
-            statistics_path="data/hulian_daily_stataistics.pkl", 
-            target_path="hualian_target_cnt.pkl", 
+            gnss_path="data/hualian_daily_gnss_dXdYdU.pkl",
+            statistics_path="data/hualian_daily_statistics.pkl",
+            target_path="data/hualian_target_cnt.pkl",
             input_width=730, 
             target_width=1,
             subset="trn"):

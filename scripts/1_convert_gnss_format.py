@@ -79,7 +79,7 @@ df = pd.concat(all_df, axis=1)
 
 full_dates = pd.date_range("1994-01-01 11:59:00+00:00", "2023-12-31 11:59:00+00:00")
 
-df = df.reindex(full_dates, fill_value=np.NaN)
+df = df.reindex(full_dates, fill_value=np.nan)
 df.to_pickle("data/GNSS_XYU.pkl")
 
 

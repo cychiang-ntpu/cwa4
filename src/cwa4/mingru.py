@@ -17,8 +17,10 @@ def g(x):
     )
 
 def log_g(x):
-    return torch.where(x >= 0, 
-        torch.log(x + 0.5),
+    # torch.where evaluates BOTH branches and propagates NaN from the unselected one,
+    # so guard the log with relu to keep its argument ≥ 0.5 in the negative-x branch.
+    return torch.where(x >= 0,
+        torch.log(F.relu(x) + 0.5),
         -F.softplus(-x)
     )
 
