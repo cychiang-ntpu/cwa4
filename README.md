@@ -32,11 +32,15 @@ uv run pytest tests/test_method4_pos_ratio.py
 uv run scripts/m3_train_all.py                     # 預設 subset 範圍
 uv run scripts/m3_collect_tables.py
 
-# 4. Method 4 — 訓練 + 表 6-10、圖 6-17
-uv run scripts/m4_run_exp1.py                       # PDF 圖 6-7、表 7-8 (15 個模型)
-uv run scripts/m4_run_exp2.py                       # PDF 圖 8-17、表 9-10 (25 個模型)
-uv run scripts/m4_eval.py
+# 4. Method 4 — 訓練 + 表 6-10、圖 6-17（GPU 大幅快於 CPU）
+uv run scripts/m4_run_exp1.py --device cuda:0       # PDF 圖 6-7、表 7-8 (15 個模型)
+uv run scripts/m4_run_exp2.py --device cuda:0       # PDF 圖 8-17、表 9-10 (25 個模型)
+uv run scripts/m4_eval.py --device cuda:0
 uv run scripts/m4_plot_data.py                      # PDF 圖 3-5
+
+# CUDA torch (RTX 50-series 需要 cu128 wheels；pyproject 已指向)：
+#   uv sync 會自動裝 torch 2.7.0+cu128。沒 GPU 則用 --device cpu。
+# 若要與 PDF 表 6-10 對照，看 reports/m4_pdf_comparison.md。
 ```
 
 ## 對應表

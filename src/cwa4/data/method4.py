@@ -121,7 +121,7 @@ class Method4Dataset(Dataset):
         split: str = "trn",
         train_end: pd.Timestamp = TRAIN_END,
         test_end: pd.Timestamp = TEST_END,
-        normalize: bool = True,
+        normalize: bool = False,
         feature_stats: tuple[np.ndarray, np.ndarray] | None = None,
     ):
         super().__init__()
