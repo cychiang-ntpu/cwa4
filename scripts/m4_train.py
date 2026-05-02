@@ -53,24 +53,11 @@ def auto_alpha(dataset) -> float:
     return float(neg / max(n, 1))
 
 
-def train(args: argparse.Namespace) -> Path:
+def train_one_seed(args: argparse.Namespace, seed: int, sources, full_trn,
+                   trn_subset, dev_subset, alpha: float, loss_fn) -> Path:
     device = torch.device(args.device)
-    sources = load_method4_sources()
+    torch.manual_seed(seed)
 
-    full_trn = Method4Dataset(sources, T=args.T, tau=args.tau, input_kind=args.input,
-                              target_kind=args.target, split="trn")
-    tst = Method4Dataset(sources, T=args.T, tau=args.tau, input_kind=args.input,
-                         target_kind=args.target, split="tst")
-    trn_subset, dev_subset = make_train_dev(full_trn, dev_seed=DEV_SEED)
-
-    alpha = args.alpha if args.alpha is not None else auto_alpha(full_trn)
-    loss_fn = make_loss(args.loss, alpha=alpha, gamma=args.gamma)
-    print(f"[m4_train] T={args.T} tau={args.tau} input={args.input} target={args.target} "
-          f"loss={args.loss} alpha={alpha:.4f} gamma={args.gamma}")
-    print(f"[m4_train] |trn|={len(trn_subset)} |dev|={len(dev_subset)} |tst|={len(tst)} "
-          f"input_dim={full_trn.input_dim}")
-
-    torch.manual_seed(args.seed)
     trn_dl = DataLoader(trn_subset, batch_size=BATCH_SIZE, shuffle=True, num_workers=0)
     dev_dl = DataLoader(dev_subset, batch_size=BATCH_SIZE, shuffle=False, num_workers=0)
 
@@ -79,10 +66,15 @@ def train(args: argparse.Namespace) -> Path:
 
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
-    tag = f"{args.input}_T{args.T}_tau{args.tau}_{args.target}_{args.loss}"
+    tag = f"{args.input}_T{args.T}_tau{args.tau}_{args.target}_{args.loss}_seed{seed}"
     ckpt_path = out_dir / f"{tag}.pt"
-    log = []
+    log_path = out_dir / f"{tag}.log.json"
 
+    if ckpt_path.exists() and log_path.exists() and not args.overwrite:
+        print(f"  seed={seed}: skip (ckpt exists)")
+        return ckpt_path
+
+    log = []
     best_dev = float("inf")
     for epoch in range(N_EPOCHS):
         model.train()
@@ -93,7 +85,6 @@ def train(args: argparse.Namespace) -> Path:
             loss = loss_fn(logits, y) if args.loss != "mse" else F.mse_loss(torch.sigmoid(logits), y)
             loss.backward()
             optim.step()
-        # dev
         model.eval()
         dev_loss_sum, n = 0.0, 0
         with torch.inference_mode():
@@ -105,21 +96,44 @@ def train(args: argparse.Namespace) -> Path:
                 n += y.shape[0]
         dev_loss = dev_loss_sum / max(n, 1)
         log.append({"epoch": epoch, "dev_loss": dev_loss})
-        print(f"  epoch {epoch} dev_loss={dev_loss:.4f}")
         if dev_loss < best_dev:
             best_dev = dev_loss
             torch.save({
                 "state_dict": model.state_dict(),
                 "args": vars(args),
+                "seed": seed,
                 "alpha": alpha,
                 "input_dim": full_trn.input_dim,
                 "best_dev_loss": best_dev,
                 "epoch": epoch,
             }, ckpt_path)
-
-    (out_dir / f"{tag}.log.json").write_text(json.dumps(log, indent=2), encoding="utf-8")
-    print(f"[m4_train] best_dev={best_dev:.4f}, ckpt -> {ckpt_path}")
+    log_path.write_text(json.dumps(log, indent=2), encoding="utf-8")
+    print(f"  seed={seed}: best_dev={best_dev:.4f}")
     return ckpt_path
+
+
+def train(args: argparse.Namespace) -> list[Path]:
+    sources = load_method4_sources()
+
+    full_trn = Method4Dataset(sources, T=args.T, tau=args.tau, input_kind=args.input,
+                              target_kind=args.target, split="trn")
+    tst = Method4Dataset(sources, T=args.T, tau=args.tau, input_kind=args.input,
+                         target_kind=args.target, split="tst")
+    trn_subset, dev_subset = make_train_dev(full_trn, dev_seed=DEV_SEED)
+
+    alpha = args.alpha if args.alpha is not None else auto_alpha(full_trn)
+    loss_fn = make_loss(args.loss, alpha=alpha, gamma=args.gamma)
+
+    seeds = [int(s) for s in args.seeds.split(",")]
+    print(f"[m4_train] T={args.T} tau={args.tau} input={args.input} target={args.target} "
+          f"loss={args.loss} alpha={alpha:.4f} gamma={args.gamma} seeds={seeds}")
+    print(f"[m4_train] |trn|={len(trn_subset)} |dev|={len(dev_subset)} |tst|={len(tst)} "
+          f"input_dim={full_trn.input_dim}")
+
+    ckpts = []
+    for seed in seeds:
+        ckpts.append(train_one_seed(args, seed, sources, full_trn, trn_subset, dev_subset, alpha, loss_fn))
+    return ckpts
 
 
 def main() -> None:
@@ -133,7 +147,10 @@ def main() -> None:
     parser.add_argument("--alpha", type=float, default=None,
                         help="weight for positive class; default = negative ratio")
     parser.add_argument("--h_dim", type=int, default=128)
-    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--seeds", default="0,1,2,3,4",
+                        help="comma-separated list of random seeds (default: 0,1,2,3,4)")
+    parser.add_argument("--overwrite", action="store_true",
+                        help="re-train even if ckpt exists")
     parser.add_argument("--out", default="exp/m4")
     parser.add_argument("--device", default="cuda:0" if torch.cuda.is_available() else "cpu")
     args = parser.parse_args()

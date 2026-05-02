@@ -17,6 +17,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", default="exp/m4")
     parser.add_argument("--device", default=None)
+    parser.add_argument("--seeds", default="0,1,2,3,4")
     args = parser.parse_args()
 
     inputs = ("gnss", "stats", "all")
@@ -27,6 +28,7 @@ def main() -> None:
             "--T", "730", "--tau", str(tau),
             "--input", inp, "--target", "binary",
             "--loss", "focal", "--gamma", "3",
+            "--seeds", args.seeds,
             "--out", args.out,
         ]
         if args.device is not None:

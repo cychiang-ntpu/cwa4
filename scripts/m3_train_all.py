@@ -29,7 +29,6 @@ from cwa4.data import Method3Dataset, load_method3_sources
 from cwa4.data.preprocessing import neighbors_within
 from cwa4.models import ModelA
 
-SEED = 1713302033171
 BATCH_SIZE = 128
 N_EPOCHS = 5
 LR = 1e-4
@@ -144,50 +143,55 @@ def evaluate_binary(model, dl, device) -> dict:
     return {"n": n, "pos": pos, "pred_pos": pred_pos, "pred_max": pred_max}
 
 
-def train_one(job: dict, sources, device: torch.device, exp_dir: Path) -> None:
+def train_one(job: dict, sources, device: torch.device, exp_dir: Path,
+              seeds: list[int]) -> None:
+    """Train one job for each seed and save per-seed result/ckpt files."""
     center = job["center"]
     head = job["head"]
     out_dir = exp_dir / center
     out_dir.mkdir(parents=True, exist_ok=True)
     mid = model_id(job)
-    result_path = out_dir / f"result_{mid}_{head}.pt"
-    if result_path.exists():
-        return  # resume
 
     target_kind = "counts" if head == "counts" else "binary"
     trn_set = Method3Dataset(center, job["neighbors"], sources, target_kind=target_kind, split="trn")
     tst_set = Method3Dataset(center, job["neighbors"], sources, target_kind=target_kind, split="tst")
-
-    torch.manual_seed(SEED)
-    trn_dl = DataLoader(trn_set, batch_size=BATCH_SIZE, shuffle=True, num_workers=0)
-    model = ModelA(trn_set.x_dim, h_ch=128, head=head).to(device)
-    optim = AdamW(model.parameters(), lr=LR)
-
-    model.train()
-    for _ in range(N_EPOCHS):
-        for x, y in trn_dl:
-            x, y = x.to(device), y.to(device)
-            optim.zero_grad()
-            out = model(x)
-            if head == "counts":
-                y_hat = out[:, -1]
-                loss = F.mse_loss(y_hat, y)
-            else:
-                logits = out[:, -1]  # (B,)
-                loss = F.binary_cross_entropy_with_logits(logits, y)
-            loss.backward()
-            optim.step()
-
     tst_dl = DataLoader(tst_set, batch_size=128, shuffle=False, num_workers=0)
-    if head == "counts":
-        result = evaluate_counts(model, tst_dl, device)
-    else:
-        result = evaluate_binary(model, tst_dl, device)
-    result["job"] = job
-    torch.save(result, result_path)
-    if head == "counts":
-        # save ckpt only for counts head (per plan: skip BCE ckpts)
-        torch.save(model.state_dict(), out_dir / f"model_{mid}_{head}.pt")
+
+    for seed in seeds:
+        result_path = out_dir / f"result_{mid}_{head}_seed{seed}.pt"
+        if result_path.exists():
+            continue  # resume
+
+        torch.manual_seed(seed)
+        trn_dl = DataLoader(trn_set, batch_size=BATCH_SIZE, shuffle=True, num_workers=0)
+        model = ModelA(trn_set.x_dim, h_ch=128, head=head).to(device)
+        optim = AdamW(model.parameters(), lr=LR)
+
+        model.train()
+        for _ in range(N_EPOCHS):
+            for x, y in trn_dl:
+                x, y = x.to(device), y.to(device)
+                optim.zero_grad()
+                out = model(x)
+                if head == "counts":
+                    y_hat = out[:, -1]
+                    loss = F.mse_loss(y_hat, y)
+                else:
+                    logits = out[:, -1]
+                    loss = F.binary_cross_entropy_with_logits(logits, y)
+                loss.backward()
+                optim.step()
+
+        if head == "counts":
+            result = evaluate_counts(model, tst_dl, device)
+        else:
+            result = evaluate_binary(model, tst_dl, device)
+        result["job"] = job
+        result["seed"] = seed
+        torch.save(result, result_path)
+        if head == "counts":
+            # save ckpt only for counts head (per plan: skip BCE ckpts)
+            torch.save(model.state_dict(), out_dir / f"model_{mid}_{head}_seed{seed}.pt")
 
 
 def main() -> None:
@@ -197,24 +201,27 @@ def main() -> None:
                         help="Cap |I| of neighbor combinations (PDF spec is 3). "
                              "Default 2 covers all PDF top-3 entries and is ~4x faster.")
     parser.add_argument("--shard", default="0/1", help="i/N — process shard i out of N")
+    parser.add_argument("--seeds", default="0,1,2,3,4",
+                        help="comma-separated random seeds (default: 0,1,2,3,4)")
     parser.add_argument("--out", default="exp/m3")
     parser.add_argument("--device", default="cuda:0" if torch.cuda.is_available() else "cpu")
     args = parser.parse_args()
 
+    seeds = [int(s) for s in args.seeds.split(",")]
     shard_i, shard_n = parse_shard(args.shard)
     device = torch.device(args.device)
     exp_dir = Path(args.out)
     exp_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"[m3_train_all] scope={args.scope} shard={shard_i}/{shard_n} device={device}")
+    print(f"[m3_train_all] scope={args.scope} shard={shard_i}/{shard_n} seeds={seeds} device={device}")
     sources = load_method3_sources()
     jobs = build_jobs(args.scope, sources, max_neighbors=args.max_neighbors)
     my_jobs = [j for k, j in enumerate(jobs) if k % shard_n == shard_i]
-    print(f"[m3_train_all] total jobs={len(jobs)} this shard={len(my_jobs)}")
+    print(f"[m3_train_all] total jobs={len(jobs)} this shard={len(my_jobs)} × {len(seeds)} seeds")
 
     t0 = time.time()
     for k, job in enumerate(my_jobs):
-        train_one(job, sources, device, exp_dir)
+        train_one(job, sources, device, exp_dir, seeds)
         if (k + 1) % 50 == 0:
             elapsed = time.time() - t0
             rate = (k + 1) / elapsed
