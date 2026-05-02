@@ -53,10 +53,16 @@ def parse_shard(s: str) -> tuple[int, int]:
     return int(i), int(n)
 
 
-def build_jobs(scope: str, sources) -> list[dict]:
-    """Each job: {center, neighbors_combo, head}."""
+def build_jobs(scope: str, sources, max_neighbors: int = 3) -> list[dict]:
+    """Each job: {center, neighbors_combo, head}.
+
+    `max_neighbors` caps |I| (the number of extra neighbor stations on top of the
+    center). PDF spec is 3; with ~13s/model on GPU, capping at 2 still covers all
+    top-3 entries listed in PDF table 4 and finishes in ~5h instead of ~24h.
+    """
     jobs: list[dict] = []
     name_to_xy = sources.stations_df.set_index("name")
+    cap = max_neighbors + 1  # itertools.combinations stops at k = cap - 1
     for center in ALL_CENTERS:
         if center not in name_to_xy.index:
             print(f"[warn] center {center} not in alive stations — skipped")
@@ -64,14 +70,14 @@ def build_jobs(scope: str, sources) -> list[dict]:
         all_neighbors = neighbors_within(sources.stations_df, center, RADIUS_NEIGHBOR)
 
         if scope == "full":
-            for k in range(0, 4):
+            for k in range(0, cap):
                 for combo in itertools.combinations(all_neighbors, k):
                     for head in ("counts", "binary"):
                         jobs.append(dict(center=center, neighbors=list(combo), head=head))
         else:
             # counts head
             if center in HOT_CENTERS:
-                for k in range(0, 4):
+                for k in range(0, cap):
                     for combo in itertools.combinations(all_neighbors, k):
                         jobs.append(dict(center=center, neighbors=list(combo), head="counts"))
             else:
@@ -187,6 +193,9 @@ def train_one(job: dict, sources, device: torch.device, exp_dir: Path) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--scope", choices=("subset", "full"), default="subset")
+    parser.add_argument("--max_neighbors", type=int, default=2,
+                        help="Cap |I| of neighbor combinations (PDF spec is 3). "
+                             "Default 2 covers all PDF top-3 entries and is ~4x faster.")
     parser.add_argument("--shard", default="0/1", help="i/N — process shard i out of N")
     parser.add_argument("--out", default="exp/m3")
     parser.add_argument("--device", default="cuda:0" if torch.cuda.is_available() else "cpu")
@@ -199,7 +208,7 @@ def main() -> None:
 
     print(f"[m3_train_all] scope={args.scope} shard={shard_i}/{shard_n} device={device}")
     sources = load_method3_sources()
-    jobs = build_jobs(args.scope, sources)
+    jobs = build_jobs(args.scope, sources, max_neighbors=args.max_neighbors)
     my_jobs = [j for k, j in enumerate(jobs) if k % shard_n == shard_i]
     print(f"[m3_train_all] total jobs={len(jobs)} this shard={len(my_jobs)}")
 

@@ -15,6 +15,14 @@ from cwa4.data import load_method3_sources
 from cwa4.data.method3 import RADIUS_TARGET, RADIUS_NEIGHBOR
 from cwa4.data.preprocessing import events_within, neighbors_within
 
+# Same 25-station Hualien-area list used by m3_train_all.py
+ALL_CENTERS = [
+    "DCHU", "FUDN", "JPEI", "SPAO", "KNKO", "YUL1", "JSU2",
+    "SOFN", "SHUL", "YENL", "BLOW", "WARO", "JPIN", "NDHU",
+    "SLIN", "HUAP", "SCHN", "HUAL", "SICH", "FONB", "CHUN",
+    "JULI", "DNFU", "FLNM", "TUNM",
+]
+
 # PDF table 3 only ever flags up to these (depth, magnitude) bins; we report
 # them prominently but the raw CSVs include all 50.
 HEADLINE_CELLS = [(1, 1), (2, 1), (2, 2)]
@@ -33,7 +41,8 @@ def parse_result_filename(p: Path) -> tuple[str, list[str], str]:
 
 def build_table2(sources, out_csv: Path) -> pd.DataFrame:
     rows = []
-    for _, row in sources.stations_df.iterrows():
+    centers_df = sources.stations_df[sources.stations_df["name"].isin(ALL_CENTERS)]
+    for _, row in centers_df.iterrows():
         name = row["name"]
         x, y = float(row["X"]), float(row["Y"])
         events = events_within(sources.pfile_df, x, y, RADIUS_TARGET)
